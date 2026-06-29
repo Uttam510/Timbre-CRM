@@ -203,8 +203,19 @@ export default function Dashboard() {
     setSending(false);
   }
 
+  const EMAIL_GOAL = 1000;
+  const emailCount = leads.filter((l) => l.contact_email).length;
+  const topLocations = Object.entries(
+    leads.reduce((acc, l) => {
+      if (l.location) acc[l.location] = (acc[l.location] || 0) + 1;
+      return acc;
+    }, {})
+  )
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
   const stats = {
     total: leads.length,
+    emails: emailCount,
     hot: leads.filter((l) => l.score >= 70).length,
     contacted: leads.filter((l) => ["Contacted", "Replied", "Won"].includes(l.status)).length,
     replied: leads.filter((l) => ["Replied", "Won"].includes(l.status)).length,
@@ -247,6 +258,7 @@ export default function Dashboard() {
               <div className="stats">
                 {[
                   [stats.total, "Leads"],
+                  [stats.emails, "Emails"],
                   [stats.hot, "Hot (A)"],
                   [stats.contacted, "Contacted"],
                   [stats.replied, "Replied"],
@@ -257,6 +269,21 @@ export default function Dashboard() {
                     <div className="stat-l">{l}</div>
                   </div>
                 ))}
+              </div>
+
+              <div className="panel" style={{ marginBottom: 14 }}>
+                <div className="panel-head" style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Email extraction goal</span>
+                  <span className="meter-val">{emailCount.toLocaleString()} / {EMAIL_GOAL.toLocaleString()}</span>
+                </div>
+                <div style={{ padding: "14px 18px" }}>
+                  <div className="funnel-track"><div className="funnel-fill" style={{ width: Math.min(100, Math.round((emailCount / EMAIL_GOAL) * 100)) + "%" }} /></div>
+                  <div className="help" style={{ marginTop: 8 }}>
+                    {emailCount >= EMAIL_GOAL
+                      ? "Goal reached — nice."
+                      : (EMAIL_GOAL - emailCount).toLocaleString() + " more emails to hit the goal"}
+                  </div>
+                </div>
               </div>
               {loading ? (
                 <p className="help">Loading pipeline…</p>
@@ -296,6 +323,23 @@ export default function Dashboard() {
                           </div>
                         );
                       })}
+                    </div>
+                    <div className="panel-head" style={{ borderTop: "1px solid var(--line)" }}>Top locations</div>
+                    <div style={{ padding: "14px 18px" }}>
+                      {topLocations.length === 0 ? (
+                        <div className="help">No locations yet — YouTube only shares a country for some channels.</div>
+                      ) : (
+                        topLocations.map(([code, c]) => {
+                          const pct = leads.length ? Math.round((c / leads.length) * 100) : 0;
+                          return (
+                            <div key={code} className="funnel-row">
+                              <span className="funnel-label" style={{ whiteSpace: "nowrap" }}>{locationLabel(code)}</span>
+                              <div className="funnel-track"><div className="funnel-fill" style={{ width: pct + "%" }} /></div>
+                              <span className="funnel-n">{c}</span>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   </div>
 
