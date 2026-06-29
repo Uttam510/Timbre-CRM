@@ -14,6 +14,8 @@ create table if not exists leads (
   subs integer default 0,
 
   contact_email text,
+  contact_link text,                 -- best website link found on the channel
+  enriched_at timestamptz,           -- when a contact email was first found
   fit_reasons jsonb default '[]'::jsonb,
   scores jsonb default '{}'::jsonb,  -- { fit, reach, need, timing, total }
   score integer default 0,
@@ -24,6 +26,10 @@ create table if not exists leads (
   last_message_id text,
   sent_at timestamptz
 );
+
+-- Backfill for databases created before these columns existed.
+alter table leads add column if not exists contact_link text;
+alter table leads add column if not exists enriched_at timestamptz;
 
 create index if not exists leads_score_idx on leads (score desc);
 create index if not exists leads_status_idx on leads (status);

@@ -1,19 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { locationLabel } from "../lib/location";
 
 const STATUSES = ["New", "Researching", "Contacted", "Replied", "Won", "Lost"];
 
 const PRESETS = [
-  { label: "Faceless YouTube", queries: ["faceless youtube channel storytelling", "faceless documentary channel", "ai voiceover scary stories channel", "faceless history channel", "motivation faceless channel", "top 10 list youtube channel"] },
-  { label: "Podcast clips", queries: ["podcast clips highlights channel", "comedy podcast clips", "business podcast clips", "true crime podcast clips", "sports podcast highlights", "interview clips channel"] },
-  { label: "Finance / explainer", queries: ["finance explainer youtube channel", "personal finance youtube small creator", "stock market explainer channel", "crypto explainer channel", "economics explained channel", "money tips youtube channel"] },
-  { label: "Creator agencies", queries: ["small youtube content agency editing", "video editing agency for creators", "short form content agency", "youtube channel management agency", "podcast editing service", "ugc content agency"] },
+  { label: "Video creators", queries: ["video creator youtube channel", "vlog youtube channel", "documentary style youtube channel", "storytelling youtube channel"] },
+  { label: "Tech YouTubers", queries: ["tech review youtube channel", "gadget review channel", "tech explainer youtube channel", "ai tools youtube channel"] },
+  { label: "Video editors", queries: ["video editing tutorial channel", "premiere pro tutorial channel", "davinci resolve tutorial channel", "video editing tips channel"] },
+  { label: "Software / dev", queries: ["software developer youtube channel", "coding tutorial channel", "web development youtube channel", "programming youtube channel"] },
+  { label: "Podcasters", queries: ["podcast clips highlights channel", "interview podcast channel", "business podcast clips", "comedy podcast clips"] },
+  { label: "Short makers", queries: ["shorts creator youtube channel", "short form content creator", "youtube shorts channel", "reels creator youtube"] },
 ];
 
 function gradeClass(grade) {
   if (grade === "A+" || grade === "A") return "A";
   return grade || "D";
+}
+
+function isToday(iso) {
+  if (!iso) return false;
+  return new Date(iso).toDateString() === new Date().toDateString();
 }
 
 // Template-based outreach in Timbre's voice: warm, short, no em dashes.
@@ -69,6 +77,7 @@ export default function Dashboard() {
 
   // send state
   const [sending, setSending] = useState(false);
+  const [enriching, setEnriching] = useState(false);
 
   async function loadLeads() {
     setLoading(true);
@@ -151,6 +160,28 @@ export default function Dashboard() {
     }
   }
 
+  async function enrichLead(lead) {
+    setEnriching(true);
+    setError("");
+    try {
+      const res = await fetch("/api/enrich", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: lead.id }),
+      });
+      const data = await res.json();
+      if (data.error) setError(data.error);
+      else if (data.lead) {
+        setLeads((ls) => ls.map((l) => (l.id === lead.id ? data.lead : l)));
+        setSelected((s) => (s && s.id === lead.id ? data.lead : s));
+        if (!data.found) setError("No email found on " + (lead.contact_link || lead.url || "the site") + ".");
+      }
+    } catch (e) {
+      setError("Enrichment failed.");
+    }
+    setEnriching(false);
+  }
+
   async function sendEmail(lead) {
     if (!lead.contact_email) {
       setError("No contact email on this lead. Add one in the drawer first.");
@@ -179,8 +210,21 @@ export default function Dashboard() {
     setSending(false);
   }
 
+  const EMAIL_GOAL = 1000; // minimum target per day
+  const DAILY_CAP = 5000; // soft ceiling per day
+  const emailCount = leads.filter((l) => l.contact_email).length; // all-time
+  const emailsToday = leads.filter((l) => l.contact_email && isToday(l.enriched_at || l.created_at)).length;
+  const topLocations = Object.entries(
+    leads.reduce((acc, l) => {
+      if (l.location) acc[l.location] = (acc[l.location] || 0) + 1;
+      return acc;
+    }, {})
+  )
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
   const stats = {
     total: leads.length,
+    emails: emailCount,
     hot: leads.filter((l) => l.score >= 70).length,
     contacted: leads.filter((l) => ["Contacted", "Replied", "Won"].includes(l.status)).length,
     replied: leads.filter((l) => ["Replied", "Won"].includes(l.status)).length,
@@ -212,7 +256,17 @@ export default function Dashboard() {
       <main className="main">
         <div className="topbar">
           <h1>{view === "dashboard" ? "Overview" : view === "discover" ? "Discover creators" : "Pipeline"}</h1>
-          {view !== "discover" && <button className="btn btn-sm" onClick={() => setView("discover")}>+ Find creators</button>}
+          {view !== "discover" && (
+            <div style={{ display: "flex", gap: 8 }}>
+              {leads.length > 0 && (
+                <>
+                  <a className="btn btn-ghost btn-sm" href="/api/export?withEmail=1&format=csv">Export emails (CSV)</a>
+                  <a className="btn btn-ghost btn-sm" href="/api/export?format=csv">Export all (CSV)</a>
+                </>
+              )}
+              <button className="btn btn-sm" onClick={() => setView("discover")}>+ Find creators</button>
+            </div>
+          )}
         </div>
 
         <div className="content">
@@ -223,6 +277,7 @@ export default function Dashboard() {
               <div className="stats">
                 {[
                   [stats.total, "Leads"],
+                  [stats.emails, "Emails"],
                   [stats.hot, "Hot (A)"],
                   [stats.contacted, "Contacted"],
                   [stats.replied, "Replied"],
@@ -233,6 +288,24 @@ export default function Dashboard() {
                     <div className="stat-l">{l}</div>
                   </div>
                 ))}
+              </div>
+
+              <div className="panel" style={{ marginBottom: 14 }}>
+                <div className="panel-head" style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Emails extracted today</span>
+                  <span className="meter-val">{emailsToday.toLocaleString()} / {EMAIL_GOAL.toLocaleString()}</span>
+                </div>
+                <div style={{ padding: "14px 18px" }}>
+                  <div className="funnel-track"><div className="funnel-fill" style={{ width: Math.min(100, Math.round((emailsToday / EMAIL_GOAL) * 100)) + "%" }} /></div>
+                  <div className="help" style={{ marginTop: 8 }}>
+                    {emailsToday >= DAILY_CAP
+                      ? "Daily cap reached (" + DAILY_CAP.toLocaleString() + ")."
+                      : emailsToday >= EMAIL_GOAL
+                      ? "Daily goal hit — " + emailsToday.toLocaleString() + " today (cap " + DAILY_CAP.toLocaleString() + ")."
+                      : (EMAIL_GOAL - emailsToday).toLocaleString() + " more today to hit the " + EMAIL_GOAL.toLocaleString() + " goal"}
+                    {" · "}{emailCount.toLocaleString()} all-time
+                  </div>
+                </div>
               </div>
               {loading ? (
                 <p className="help">Loading pipeline…</p>
@@ -273,6 +346,23 @@ export default function Dashboard() {
                         );
                       })}
                     </div>
+                    <div className="panel-head" style={{ borderTop: "1px solid var(--line)" }}>Top locations</div>
+                    <div style={{ padding: "14px 18px" }}>
+                      {topLocations.length === 0 ? (
+                        <div className="help">No locations yet — YouTube only shares a country for some channels.</div>
+                      ) : (
+                        topLocations.map(([code, c]) => {
+                          const pct = leads.length ? Math.round((c / leads.length) * 100) : 0;
+                          return (
+                            <div key={code} className="funnel-row">
+                              <span className="funnel-label" style={{ whiteSpace: "nowrap" }}>{locationLabel(code)}</span>
+                              <div className="funnel-track"><div className="funnel-fill" style={{ width: pct + "%" }} /></div>
+                              <span className="funnel-n">{c}</span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
 
                   <div className="panel">
@@ -282,7 +372,7 @@ export default function Dashboard() {
                         <span className={"grade " + gradeClass(l.grade)}>{l.grade}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div className="row-name" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>
-                          <div className="row-sub">{(l.subs || 0).toLocaleString()} subs · {l.status}</div>
+                          <div className="row-sub">{(l.subs || 0).toLocaleString()} subs · {l.status}{l.location ? " · " + locationLabel(l.location) : ""}</div>
                         </div>
                         <span className="meter-val">{l.score}</span>
                       </div>
@@ -378,7 +468,7 @@ export default function Dashboard() {
                     <span className={"grade " + gradeClass(l.grade)}>{l.grade}</span>
                     <div style={{ width: 200 }}>
                       <div className="row-name">{l.name}</div>
-                      <div className="row-sub">{(l.subs || 0).toLocaleString()} subs · {l.segment}</div>
+                      <div className="row-sub">{(l.subs || 0).toLocaleString()} subs · {l.segment}{l.location ? " · " + locationLabel(l.location) : ""}</div>
                     </div>
                     <div className="meter"><div style={{ width: l.score + "%" }} /></div>
                     <span className="meter-val">{l.score}</span>
@@ -401,13 +491,15 @@ export default function Dashboard() {
           onSaveDraft={(d) => patchLead(selected.id, { outreach: d })}
           onSend={() => sendEmail(selected)}
           sending={sending}
+          onEnrich={() => enrichLead(selected)}
+          enriching={enriching}
         />
       )}
     </div>
   );
 }
 
-function LeadDrawer({ lead, onClose, onStatus, onEmail, onDraft, onSaveDraft, onSend, sending }) {
+function LeadDrawer({ lead, onClose, onStatus, onEmail, onDraft, onSaveDraft, onSend, sending, onEnrich, enriching }) {
   const sc = lead.scores || {};
   const draft = lead.outreach;
   const [email, setEmailLocal] = useState(lead.contact_email || "");
@@ -430,7 +522,7 @@ function LeadDrawer({ lead, onClose, onStatus, onEmail, onDraft, onSaveDraft, on
           <div style={{ fontSize: 38, fontWeight: 680, letterSpacing: "-0.03em" }}>{lead.score}</div>
           <div>
             <span className={"grade " + gradeClass(lead.grade)}>{lead.grade}</span>
-            <div className="help" style={{ marginTop: 5 }}>{(lead.subs || 0).toLocaleString()} subs · {lead.segment}</div>
+            <div className="help" style={{ marginTop: 5 }}>{(lead.subs || 0).toLocaleString()} subs · {lead.segment}{lead.location ? " · " + locationLabel(lead.location) : ""}</div>
           </div>
         </div>
 
@@ -462,6 +554,11 @@ function LeadDrawer({ lead, onClose, onStatus, onEmail, onDraft, onSaveDraft, on
           <input className="field" value={email} placeholder="name@domain.com" onChange={(e) => setEmailLocal(e.target.value)} />
           <button className="btn btn-ghost btn-sm" onClick={() => onEmail(email)}>Save</button>
         </div>
+        {(lead.contact_link || lead.url) && (
+          <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} disabled={enriching} onClick={onEnrich}>
+            {enriching ? "Scraping site…" : "Find email from site"}
+          </button>
+        )}
 
         <div className="section-label">Outreach</div>
         {draft ? (
