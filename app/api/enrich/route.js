@@ -30,7 +30,7 @@ export async function POST(req) {
 
     const { data, error } = await supabase
       .from("leads")
-      .update({ contact_email: email, scores, score: total, grade: g.grade })
+      .update({ contact_email: email, scores, score: total, grade: g.grade, enriched_at: new Date().toISOString() })
       .eq("id", id)
       .select()
       .single();

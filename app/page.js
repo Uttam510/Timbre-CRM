@@ -6,15 +6,22 @@ import { locationLabel } from "../lib/location";
 const STATUSES = ["New", "Researching", "Contacted", "Replied", "Won", "Lost"];
 
 const PRESETS = [
-  { label: "Faceless YouTube", queries: ["faceless youtube channel storytelling", "faceless documentary channel", "ai voiceover scary stories channel", "faceless history channel", "motivation faceless channel", "top 10 list youtube channel"] },
-  { label: "Podcast clips", queries: ["podcast clips highlights channel", "comedy podcast clips", "business podcast clips", "true crime podcast clips", "sports podcast highlights", "interview clips channel"] },
-  { label: "Finance / explainer", queries: ["finance explainer youtube channel", "personal finance youtube small creator", "stock market explainer channel", "crypto explainer channel", "economics explained channel", "money tips youtube channel"] },
-  { label: "Creator agencies", queries: ["small youtube content agency editing", "video editing agency for creators", "short form content agency", "youtube channel management agency", "podcast editing service", "ugc content agency"] },
+  { label: "Video creators", queries: ["video creator youtube channel", "vlog youtube channel", "documentary style youtube channel", "storytelling youtube channel"] },
+  { label: "Tech YouTubers", queries: ["tech review youtube channel", "gadget review channel", "tech explainer youtube channel", "ai tools youtube channel"] },
+  { label: "Video editors", queries: ["video editing tutorial channel", "premiere pro tutorial channel", "davinci resolve tutorial channel", "video editing tips channel"] },
+  { label: "Software / dev", queries: ["software developer youtube channel", "coding tutorial channel", "web development youtube channel", "programming youtube channel"] },
+  { label: "Podcasters", queries: ["podcast clips highlights channel", "interview podcast channel", "business podcast clips", "comedy podcast clips"] },
+  { label: "Short makers", queries: ["shorts creator youtube channel", "short form content creator", "youtube shorts channel", "reels creator youtube"] },
 ];
 
 function gradeClass(grade) {
   if (grade === "A+" || grade === "A") return "A";
   return grade || "D";
+}
+
+function isToday(iso) {
+  if (!iso) return false;
+  return new Date(iso).toDateString() === new Date().toDateString();
 }
 
 // Template-based outreach in Timbre's voice: warm, short, no em dashes.
@@ -203,8 +210,10 @@ export default function Dashboard() {
     setSending(false);
   }
 
-  const EMAIL_GOAL = 1000;
-  const emailCount = leads.filter((l) => l.contact_email).length;
+  const EMAIL_GOAL = 1000; // minimum target per day
+  const DAILY_CAP = 5000; // soft ceiling per day
+  const emailCount = leads.filter((l) => l.contact_email).length; // all-time
+  const emailsToday = leads.filter((l) => l.contact_email && isToday(l.enriched_at || l.created_at)).length;
   const topLocations = Object.entries(
     leads.reduce((acc, l) => {
       if (l.location) acc[l.location] = (acc[l.location] || 0) + 1;
@@ -273,15 +282,18 @@ export default function Dashboard() {
 
               <div className="panel" style={{ marginBottom: 14 }}>
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>Email extraction goal</span>
-                  <span className="meter-val">{emailCount.toLocaleString()} / {EMAIL_GOAL.toLocaleString()}</span>
+                  <span>Emails extracted today</span>
+                  <span className="meter-val">{emailsToday.toLocaleString()} / {EMAIL_GOAL.toLocaleString()}</span>
                 </div>
                 <div style={{ padding: "14px 18px" }}>
-                  <div className="funnel-track"><div className="funnel-fill" style={{ width: Math.min(100, Math.round((emailCount / EMAIL_GOAL) * 100)) + "%" }} /></div>
+                  <div className="funnel-track"><div className="funnel-fill" style={{ width: Math.min(100, Math.round((emailsToday / EMAIL_GOAL) * 100)) + "%" }} /></div>
                   <div className="help" style={{ marginTop: 8 }}>
-                    {emailCount >= EMAIL_GOAL
-                      ? "Goal reached — nice."
-                      : (EMAIL_GOAL - emailCount).toLocaleString() + " more emails to hit the goal"}
+                    {emailsToday >= DAILY_CAP
+                      ? "Daily cap reached (" + DAILY_CAP.toLocaleString() + ")."
+                      : emailsToday >= EMAIL_GOAL
+                      ? "Daily goal hit — " + emailsToday.toLocaleString() + " today (cap " + DAILY_CAP.toLocaleString() + ")."
+                      : (EMAIL_GOAL - emailsToday).toLocaleString() + " more today to hit the " + EMAIL_GOAL.toLocaleString() + " goal"}
+                    {" · "}{emailCount.toLocaleString()} all-time
                   </div>
                 </div>
               </div>
