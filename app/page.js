@@ -256,7 +256,17 @@ export default function Dashboard() {
       <main className="main">
         <div className="topbar">
           <h1>{view === "dashboard" ? "Overview" : view === "discover" ? "Discover creators" : "Pipeline"}</h1>
-          {view !== "discover" && <button className="btn btn-sm" onClick={() => setView("discover")}>+ Find creators</button>}
+          {view !== "discover" && (
+            <div style={{ display: "flex", gap: 8 }}>
+              {leads.length > 0 && (
+                <>
+                  <a className="btn btn-ghost btn-sm" href="/api/export?withEmail=1&format=csv">Export emails (CSV)</a>
+                  <a className="btn btn-ghost btn-sm" href="/api/export?format=csv">Export all (CSV)</a>
+                </>
+              )}
+              <button className="btn btn-sm" onClick={() => setView("discover")}>+ Find creators</button>
+            </div>
+          )}
         </div>
 
         <div className="content">
