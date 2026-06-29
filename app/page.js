@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { locationLabel } from "../lib/location";
 
 const STATUSES = ["New", "Researching", "Contacted", "Replied", "Won", "Lost"];
 
@@ -69,6 +70,7 @@ export default function Dashboard() {
 
   // send state
   const [sending, setSending] = useState(false);
+  const [enriching, setEnriching] = useState(false);
 
   async function loadLeads() {
     setLoading(true);
@@ -149,6 +151,28 @@ export default function Dashboard() {
       setLeads((ls) => ls.map((l) => (l.id === id ? data.lead : l)));
       setSelected((s) => (s && s.id === id ? data.lead : s));
     }
+  }
+
+  async function enrichLead(lead) {
+    setEnriching(true);
+    setError("");
+    try {
+      const res = await fetch("/api/enrich", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: lead.id }),
+      });
+      const data = await res.json();
+      if (data.error) setError(data.error);
+      else if (data.lead) {
+        setLeads((ls) => ls.map((l) => (l.id === lead.id ? data.lead : l)));
+        setSelected((s) => (s && s.id === lead.id ? data.lead : s));
+        if (!data.found) setError("No email found on " + (lead.contact_link || lead.url || "the site") + ".");
+      }
+    } catch (e) {
+      setError("Enrichment failed.");
+    }
+    setEnriching(false);
   }
 
   async function sendEmail(lead) {
@@ -282,7 +306,7 @@ export default function Dashboard() {
                         <span className={"grade " + gradeClass(l.grade)}>{l.grade}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div className="row-name" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>
-                          <div className="row-sub">{(l.subs || 0).toLocaleString()} subs · {l.status}</div>
+                          <div className="row-sub">{(l.subs || 0).toLocaleString()} subs · {l.status}{l.location ? " · " + locationLabel(l.location) : ""}</div>
                         </div>
                         <span className="meter-val">{l.score}</span>
                       </div>
@@ -378,7 +402,7 @@ export default function Dashboard() {
                     <span className={"grade " + gradeClass(l.grade)}>{l.grade}</span>
                     <div style={{ width: 200 }}>
                       <div className="row-name">{l.name}</div>
-                      <div className="row-sub">{(l.subs || 0).toLocaleString()} subs · {l.segment}</div>
+                      <div className="row-sub">{(l.subs || 0).toLocaleString()} subs · {l.segment}{l.location ? " · " + locationLabel(l.location) : ""}</div>
                     </div>
                     <div className="meter"><div style={{ width: l.score + "%" }} /></div>
                     <span className="meter-val">{l.score}</span>
@@ -401,13 +425,15 @@ export default function Dashboard() {
           onSaveDraft={(d) => patchLead(selected.id, { outreach: d })}
           onSend={() => sendEmail(selected)}
           sending={sending}
+          onEnrich={() => enrichLead(selected)}
+          enriching={enriching}
         />
       )}
     </div>
   );
 }
 
-function LeadDrawer({ lead, onClose, onStatus, onEmail, onDraft, onSaveDraft, onSend, sending }) {
+function LeadDrawer({ lead, onClose, onStatus, onEmail, onDraft, onSaveDraft, onSend, sending, onEnrich, enriching }) {
   const sc = lead.scores || {};
   const draft = lead.outreach;
   const [email, setEmailLocal] = useState(lead.contact_email || "");
@@ -430,7 +456,7 @@ function LeadDrawer({ lead, onClose, onStatus, onEmail, onDraft, onSaveDraft, on
           <div style={{ fontSize: 38, fontWeight: 680, letterSpacing: "-0.03em" }}>{lead.score}</div>
           <div>
             <span className={"grade " + gradeClass(lead.grade)}>{lead.grade}</span>
-            <div className="help" style={{ marginTop: 5 }}>{(lead.subs || 0).toLocaleString()} subs · {lead.segment}</div>
+            <div className="help" style={{ marginTop: 5 }}>{(lead.subs || 0).toLocaleString()} subs · {lead.segment}{lead.location ? " · " + locationLabel(lead.location) : ""}</div>
           </div>
         </div>
 
@@ -462,6 +488,11 @@ function LeadDrawer({ lead, onClose, onStatus, onEmail, onDraft, onSaveDraft, on
           <input className="field" value={email} placeholder="name@domain.com" onChange={(e) => setEmailLocal(e.target.value)} />
           <button className="btn btn-ghost btn-sm" onClick={() => onEmail(email)}>Save</button>
         </div>
+        {(lead.contact_link || lead.url) && (
+          <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} disabled={enriching} onClick={onEnrich}>
+            {enriching ? "Scraping site…" : "Find email from site"}
+          </button>
+        )}
 
         <div className="section-label">Outreach</div>
         {draft ? (
